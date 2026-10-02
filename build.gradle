@@ -1,0 +1,106 @@
+plugins {
+    id 'fabric-loom' version '1.9-SNAPSHOT'
+}
+
+version = '1.0.0'
+group = 'com.example'
+base { archivesName = 'ht-mod-1.21.1' }
+
+repositories {
+    maven { url = 'https://maven.fabricmc.net/' }
+    mavenCentral()
+}
+
+dependencies {
+    minecraft 'com.mojang:minecraft:1.21.1'
+    mappings 'net.fabricmc:yarn:1.21.1+build.3:v2'
+    modImplementation 'net.fabricmc:fabric-loader:0.16.10'
+    modImplementation 'net.fabricmc.fabric-api:fabric-api:0.107.0+1.21.1'
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.release = 21
+}
+
+def genJava = file("$buildDir/generated/sources/htmod/com/example/htmod/HTMod.java")
+def genRes = file("$buildDir/generated/resources/htmod")
+def genTask = tasks.register("generateHtMod") {
+    outputs.files(genJava, genRes)
+    doLast {
+        genJava.parentFile.mkdirs()
+        genJava.text = '''package com.example.htmod;
+
+import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
+import net.minecraft.block.AbstractBlock;
+import net.minecraft.block.Block;
+import net.minecraft.block.Blocks;
+import net.minecraft.item.BlockItem;
+import net.minecraft.item.Item;
+import net.minecraft.item.ItemStack;
+import net.minecraft.registry.Registries;
+import net.minecraft.registry.Registry;
+import net.minecraft.registry.RegistryKey;
+import net.minecraft.registry.RegistryKeys;
+import net.minecraft.server.command.CommandManager;
+import net.minecraft.text.Text;
+import net.minecraft.util.Identifier;
+
+public class HTMod implements ModInitializer {
+    public static final String MOD_ID = "htmod";
+    public static final Identifier ID = Identifier.of(MOD_ID, "ht_block");
+
+    public static final Block HT_BLOCK = Registry.register(Registries.BLOCK, ID,
+        new Block(AbstractBlock.Settings.copy(Blocks.BLACK_CONCRETE)
+        .registryKey(RegistryKey.of(RegistryKeys.BLOCK, ID))));
+
+    public static final Item HT_ITEM = Registry.register(Registries.ITEM, ID,
+        new BlockItem(HT_BLOCK, new Item.Settings()
+        .registryKey(RegistryKey.of(RegistryKeys.ITEM, ID))));
+
+    @Override public void onInitialize() {
+        CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) ->
+            dispatcher.register(CommandManager.literal("ht").executes(context -> {
+                context.getSource().getPlayerOrThrow().giveItemStack(new ItemStack(HT_ITEM));
+                context.getSource().sendFeedback(() -> Text.literal("Вы получили блок HT!"), false);
+                return 1;
+            })));
+    }
+}
+'''
+        (genRes/"assets/htmod/blockstates").mkdir(parents=True, exist_ok=True)
+        (genRes/"assets/htmod/models/block").mkdir(parents=True, exist_ok=True)
+        (genRes/"assets/htmod/models/item").mkdir(parents=True, exist_ok=True)
+        (genRes/"assets/htmod/textures/block").mkdir(parents=True, exist_ok=True)
+        (genRes/"data/htmod/loot_table/blocks").mkdir(parents=True, exist_ok=True)
+        (genRes/"fabric.mod.json").write_text('''{
+  "schemaVersion": 1,
+  "id": "htmod",
+  "version": "1.0.0",
+  "name": "HT Block",
+  "environment": "*",
+  "entrypoints": {"main": ["com.example.htmod.HTMod"]},
+  "depends": {
+    "fabricloader": ">=0.16.10",
+    "minecraft": "~1.21.1",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}''')
+        (genRes/"assets/htmod/blockstates/ht_block.json").write_text('{"variants":{"":{"model":"htmod:block/ht_block"}}}')
+        (genRes/"assets/htmod/models/block/ht_block.json").write_text('{"parent":"minecraft:block/cube_all","textures":{"all":"htmod:block/ht_block"}}')
+        (genRes/"assets/htmod/models/item/ht_block.json").write_text('{"parent":"htmod:block/ht_block"}')
+        (genRes/"data/htmod/loot_table/blocks/ht_block.json").write_text('{"type":"minecraft:block","pools":[{"rolls":1,"entries":[{"type":"minecraft:item","name":"htmod:ht_block"}],"conditions":[{"condition":"minecraft:survives_explosion"}]}]}')
+        # 16x16 black PNG encoded as base64 to avoid binary upload.
+        import base64
+        png_b64="iVBORw0KGgoAAAANSUhEUgAAAA4AAAAOCAYAAAAfSC3RAAAAHElEQVQoU2NkYGD4z0AEYBxVSFUBAAxDAAAGHAAH8gAAOwAAAABJRU5ErkJggg=="
+        (genRes/"assets/htmod/textures/block/ht_block.png").write_bytes(base64.b64decode(png_b64))
+}
+sourceSets {
+    main {
+        java.srcDir("$buildDir/generated/sources/htmod")
+        resources.srcDir("$buildDir/generated/resources/htmod")
+    }
+}
+tasks.named("compileJava").configure { dependsOn(genTask) }
+tasks.named("processResources").configure { dependsOn(genTask) }
